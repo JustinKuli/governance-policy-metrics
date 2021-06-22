@@ -1,0 +1,4 @@
+## Append samples you want in your CSV to this file as resources ##
+resources:
+- policy.open-cluster-management.io_v1_policy.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples

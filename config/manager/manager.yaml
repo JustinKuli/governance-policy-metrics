@@ -30,7 +30,10 @@ spec:
         args:
         - --leader-elect
         image: controller:latest
+        imagePullPolicy: Always
         name: manager
+        ports:
+        - containerPort: 8080 # metrics
         securityContext:
           allowPrivilegeEscalation: false
         livenessProbe:

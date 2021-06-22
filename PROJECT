@@ -6,4 +6,9 @@ plugins:
   scorecard.sdk.operatorframework.io/v2: {}
 projectName: governance-policy-metrics
 repo: github.com/JustinKuli/governance-policy-metrics
+resources:
+- controller: true
+  group: policy.open-cluster-management.io
+  kind: Policy
+  version: v1
 version: "3"
