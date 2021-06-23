@@ -41,10 +41,6 @@ type PolicyReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Policy object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
@@ -69,19 +65,34 @@ func (r *PolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	logger.Info("Got ComplianceState", "pol.Status.ComplianceState", pol.Status.ComplianceState)
 	if pol.Status.ComplianceState == policiesv1.Compliant {
-		metric, err := policyStatusMeter.GetMetricWith(promLabels)
+		statusGauge, err := policyStatusMeter.GetMetricWith(promLabels)
 		if err != nil {
 			logger.Error(err, "Failed to get metric from GaugeVec")
 			return ctrl.Result{}, err
 		}
-		metric.Set(0)
+		statusGauge.Set(0)
 	} else if pol.Status.ComplianceState == policiesv1.NonCompliant {
-		metric, err := policyStatusMeter.GetMetricWith(promLabels)
+		statusGauge, err := policyStatusMeter.GetMetricWith(promLabels)
 		if err != nil {
 			logger.Error(err, "Failed to get metric from GaugeVec")
 			return ctrl.Result{}, err
 		}
-		metric.Set(1)
+		statusGauge.Set(1)
+	}
+
+	if pol.Status.Placement != nil && len(pol.Status.Placement) != 0 {
+		// this is a root policy so we'll count how many clusters it's distributed to
+		if pol.Status.Status == nil {
+			logger.Info("Root policy has nil Status.Status. Requeuing.")
+			return ctrl.Result{Requeue: true}, nil
+		}
+
+		distributedGauge, err := policyDistributedMeter.GetMetricWith(promLabels)
+		if err != nil {
+			logger.Error(err, "Failed to get metric from GaugeVec")
+			return ctrl.Result{}, err
+		}
+		distributedGauge.Set(float64(len(pol.Status.Status)))
 	}
 
 	return ctrl.Result{}, nil

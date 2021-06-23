@@ -16,8 +16,22 @@ var (
 			"namespace",
 		},
 	)
+
+	policyDistributedMeter = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "ocm_policy_total_managed_clusters",
+			Help: "The number of managed clusters the policy is distributed to.",
+		},
+		[]string{
+			"name",
+			"namespace",
+		},
+	)
 )
 
 func init() {
-	metrics.Registry.MustRegister(policyStatusMeter)
+	metrics.Registry.MustRegister(
+		policyStatusMeter,
+		policyDistributedMeter,
+	)
 }
