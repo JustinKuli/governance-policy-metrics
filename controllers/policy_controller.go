@@ -47,8 +47,8 @@ type PolicyReconciler struct {
 func (r *PolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	promLabels := prometheus.Labels{
-		"name":      req.Name,
-		"namespace": req.Namespace,
+		"name":             req.Name,
+		"policy_namespace": req.Namespace,
 	}
 
 	pol := &policiesv1.Policy{}

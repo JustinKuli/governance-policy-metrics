@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: noncompliant-policy
+  namespace: governance-policy-metrics-system
+spec:
+  groups:
+  - name: noncompliant-policy
+    rules:
+    - alert: NonCompliantPolicyAlert
+      annotations:
+        message: Policy {{ $labels.name }} in namespace {{ $labels.policy_namespace }} is NonCompliant.
+      expr: sum by(name, policy_namespace) (ocm_policy_status) > 0
+      labels:
+        severity: warning

@@ -13,7 +13,7 @@ var (
 		},
 		[]string{
 			"name",
-			"namespace",
+			"policy_namespace",
 		},
 	)
 
@@ -24,7 +24,7 @@ var (
 		},
 		[]string{
 			"name",
-			"namespace",
+			"policy_namespace",
 		},
 	)
 )

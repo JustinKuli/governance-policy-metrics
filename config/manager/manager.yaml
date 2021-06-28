@@ -2,7 +2,8 @@ apiVersion: v1
 kind: Namespace
 metadata:
   labels:
-    control-plane: controller-manager
+    app: governance-policy-metrics
+    openshift.io/cluster-monitoring: "true"
   name: system
 ---
 apiVersion: apps/v1
@@ -11,16 +12,16 @@ metadata:
   name: controller-manager
   namespace: system
   labels:
-    control-plane: controller-manager
+    app: governance-policy-metrics
 spec:
   selector:
     matchLabels:
-      control-plane: controller-manager
+      app: governance-policy-metrics
   replicas: 1
   template:
     metadata:
       labels:
-        control-plane: controller-manager
+        app: governance-policy-metrics
     spec:
       securityContext:
         runAsNonRoot: true
@@ -32,8 +33,6 @@ spec:
         image: controller:latest
         imagePullPolicy: Always
         name: manager
-        ports:
-        - containerPort: 8080 # metrics
         securityContext:
           allowPrivilegeEscalation: false
         livenessProbe:
