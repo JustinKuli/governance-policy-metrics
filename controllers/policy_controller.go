@@ -55,41 +55,56 @@ func (r *PolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	err := r.Client.Get(ctx, req.NamespacedName, pol)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			metricDeleted := policyStatusMeter.Delete(promLabels)
-			logger.Info("Policy not found - must have been deleted.", "metricDeleted", metricDeleted)
+			// Try to delete the gauges, but don't get hung up on errors.
+			activeGaugeDeleted := policyActiveGauge.Delete(promLabels)
+			statusGaugeDeleted := policyStatusGauge.Delete(promLabels)
+			distributedGaugeDeleted := policyDistributedGauge.Delete(promLabels)
+			logger.Info("Policy not found - must have been deleted.",
+				"active-gauge-deleted", activeGaugeDeleted,
+				"non-compliant-gauge-deleted", statusGaugeDeleted,
+				"distributed-gauge-deleted", distributedGaugeDeleted)
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "Failed to get Policy")
 		return ctrl.Result{}, err
 	}
 
+	logger.Info("Got active state", "pol.Spec.Disabled", pol.Spec.Disabled)
+	activeMetric, err := policyActiveGauge.GetMetricWith(promLabels)
+	if err != nil {
+		logger.Error(err, "Failed to get active metric from GaugeVec")
+		return ctrl.Result{}, err
+	}
+	if pol.Spec.Disabled {
+		activeMetric.Set(0)
+		return ctrl.Result{}, nil
+	} else {
+		activeMetric.Set(1)
+	}
+
 	logger.Info("Got ComplianceState", "pol.Status.ComplianceState", pol.Status.ComplianceState)
+	statusMetric, err := policyStatusGauge.GetMetricWith(promLabels)
+	if err != nil {
+		logger.Error(err, "Failed to get status metric from GaugeVec")
+		return ctrl.Result{}, err
+	}
 	if pol.Status.ComplianceState == policiesv1.Compliant {
-		statusGauge, err := policyStatusMeter.GetMetricWith(promLabels)
-		if err != nil {
-			logger.Error(err, "Failed to get metric from GaugeVec")
-			return ctrl.Result{}, err
-		}
-		statusGauge.Set(0)
+		statusMetric.Set(0)
 	} else if pol.Status.ComplianceState == policiesv1.NonCompliant {
-		statusGauge, err := policyStatusMeter.GetMetricWith(promLabels)
-		if err != nil {
-			logger.Error(err, "Failed to get metric from GaugeVec")
-			return ctrl.Result{}, err
-		}
-		statusGauge.Set(1)
+		statusMetric.Set(1)
 	}
 
 	if pol.Status.Placement != nil && len(pol.Status.Placement) != 0 {
-		// this is a root policy so we'll count how many clusters it's distributed to
+		// Root policies only
+
 		if pol.Status.Status == nil {
 			logger.Info("Root policy has nil Status.Status. Requeuing.")
 			return ctrl.Result{Requeue: true}, nil
 		}
 
-		distributedGauge, err := policyDistributedMeter.GetMetricWith(promLabels)
+		distributedGauge, err := policyDistributedGauge.GetMetricWith(promLabels)
 		if err != nil {
-			logger.Error(err, "Failed to get metric from GaugeVec")
+			logger.Error(err, "Failed to get distributed metric from GaugeVec")
 			return ctrl.Result{}, err
 		}
 		distributedGauge.Set(float64(len(pol.Status.Status)))
