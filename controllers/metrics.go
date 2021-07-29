@@ -6,45 +6,22 @@ import (
 )
 
 var (
-	policyActiveGauge = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "ocm_policy_active",
-			Help: "Whether the named policy is active. 0 == disabled.",
-		},
-		[]string{
-			"name",
-			"policy_namespace",
-		},
-	)
-
 	policyStatusGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "ocm_policy_status",
-			Help: "The compliance status of the named policy. 0 == Compliant.",
+			Help: "The compliance status of the named policy. 0 == Compliant. 1 == NonCompliant",
 		},
 		[]string{
+			"type",
 			"name",
 			"policy_namespace",
-		},
-	)
-
-	// Should match the length of the status.status array in root policies.
-	policyDistributedGauge = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "ocm_policy_total_managed_clusters",
-			Help: "The number of managed clusters the policy is distributed to.",
-		},
-		[]string{
-			"name",
-			"policy_namespace",
+			"cluster_namespace",
 		},
 	)
 )
 
 func init() {
 	metrics.Registry.MustRegister(
-		policyActiveGauge,
 		policyStatusGauge,
-		policyDistributedGauge,
 	)
 }

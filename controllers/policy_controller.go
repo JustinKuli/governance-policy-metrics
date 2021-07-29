@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -25,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
 	policiesv1 "github.com/open-cluster-management/governance-policy-propagator/pkg/apis/policy/v1"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -38,6 +40,7 @@ type PolicyReconciler struct {
 //+kubebuilder:rbac:groups=policy.open-cluster-management.io,resources=policies,verbs=get;list;watch
 //+kubebuilder:rbac:groups=policy.open-cluster-management.io,resources=policies/status,verbs=get
 //+kubebuilder:rbac:groups=policy.open-cluster-management.io,resources=policies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=managedclusters,verbs=list
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -46,23 +49,43 @@ type PolicyReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
 func (r *PolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	promLabels := prometheus.Labels{
-		"name":             req.Name,
-		"policy_namespace": req.Namespace,
+
+	// Need to know if the policy is a root policy to create the correct prometheus labels
+	clusterList := &clusterv1.ManagedClusterList{}
+	err := r.Client.List(ctx, clusterList, &client.ListOptions{})
+	if err != nil {
+		logger.Error(err, "Failed to list clusters, going to retry...")
+		return ctrl.Result{}, err
+	}
+
+	var promLabels map[string]string
+	if isInClusterNamespace(req.Namespace, clusterList.Items) {
+		// propagated policies look like <namespace>.<name>
+		// also note: k8s namespace names follow RFC 1123 (so no "." in it)
+		splitName := strings.SplitN(req.Name, ".", 2)
+		promLabels = prometheus.Labels{
+			"type":              "propagated",
+			"name":              splitName[1],
+			"policy_namespace":  splitName[0],
+			"cluster_namespace": req.Namespace,
+		}
+	} else {
+		promLabels = prometheus.Labels{
+			"type":              "root",
+			"name":              req.Name,
+			"policy_namespace":  req.Namespace,
+			"cluster_namespace": "<null>", // this is basically a sentinel value
+		}
 	}
 
 	pol := &policiesv1.Policy{}
-	err := r.Client.Get(ctx, req.NamespacedName, pol)
+	err = r.Client.Get(ctx, req.NamespacedName, pol)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			// Try to delete the gauges, but don't get hung up on errors.
-			activeGaugeDeleted := policyActiveGauge.Delete(promLabels)
+			// Try to delete the gauge, but don't get hung up on errors.
 			statusGaugeDeleted := policyStatusGauge.Delete(promLabels)
-			distributedGaugeDeleted := policyDistributedGauge.Delete(promLabels)
 			logger.Info("Policy not found - must have been deleted.",
-				"active-gauge-deleted", activeGaugeDeleted,
-				"non-compliant-gauge-deleted", statusGaugeDeleted,
-				"distributed-gauge-deleted", distributedGaugeDeleted)
+				"status-gauge-deleted", statusGaugeDeleted)
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "Failed to get Policy")
@@ -70,16 +93,12 @@ func (r *PolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	logger.Info("Got active state", "pol.Spec.Disabled", pol.Spec.Disabled)
-	activeMetric, err := policyActiveGauge.GetMetricWith(promLabels)
-	if err != nil {
-		logger.Error(err, "Failed to get active metric from GaugeVec")
-		return ctrl.Result{}, err
-	}
 	if pol.Spec.Disabled {
-		activeMetric.Set(0)
+		// The policy is no longer active, so delete its metric
+		statusGaugeDeleted := policyStatusGauge.Delete(promLabels)
+		logger.Info("Metric removed for non-active policy",
+			"status-gauge-deleted", statusGaugeDeleted)
 		return ctrl.Result{}, nil
-	} else {
-		activeMetric.Set(1)
 	}
 
 	logger.Info("Got ComplianceState", "pol.Status.ComplianceState", pol.Status.ComplianceState)
@@ -94,23 +113,17 @@ func (r *PolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		statusMetric.Set(1)
 	}
 
-	if pol.Status.Placement != nil && len(pol.Status.Placement) != 0 {
-		// Root policies only
-
-		if pol.Status.Status == nil {
-			logger.Info("Root policy has nil Status.Status. Requeuing.")
-			return ctrl.Result{Requeue: true}, nil
-		}
-
-		distributedGauge, err := policyDistributedGauge.GetMetricWith(promLabels)
-		if err != nil {
-			logger.Error(err, "Failed to get distributed metric from GaugeVec")
-			return ctrl.Result{}, err
-		}
-		distributedGauge.Set(float64(len(pol.Status.Status)))
-	}
-
 	return ctrl.Result{}, nil
+}
+
+// This would be from a common pkg, but there is a dependency mismatch causing problems.
+func isInClusterNamespace(ns string, allClusters []clusterv1.ManagedCluster) bool {
+	for _, cluster := range allClusters {
+		if ns == cluster.GetName() {
+			return true
+		}
+	}
+	return false
 }
 
 // SetupWithManager sets up the controller with the Manager.
