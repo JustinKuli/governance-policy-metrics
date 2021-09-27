@@ -10,6 +10,6 @@ spec:
     - alert: NonCompliantPolicyAlert
       annotations:
         message: Policy {{ $labels.name }} in namespace {{ $labels.policy_namespace }} is NonCompliant.
-      expr: sum by(name, policy_namespace) (ocm_policy_status) > 0
+      expr: sum by(name, policy_namespace) (policy_governance_info) > 0
       labels:
-        severity: warning
+        severity: info

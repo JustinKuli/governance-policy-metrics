@@ -60,19 +60,24 @@ func (r *PolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	var promLabels map[string]string
 	if isInClusterNamespace(req.Namespace, clusterList.Items) {
-		// propagated policies look like <namespace>.<name>
+		// propagated policies should look like <namespace>.<name>
 		// also note: k8s namespace names follow RFC 1123 (so no "." in it)
 		splitName := strings.SplitN(req.Name, ".", 2)
+		if len(splitName) < 2 {
+			// Don't do any metrics if the policy is invalid.
+			logger.Info("Invalid policy in cluster namespace: missing root policy ns prefix")
+			return ctrl.Result{}, nil
+		}
 		promLabels = prometheus.Labels{
 			"type":              "propagated",
-			"name":              splitName[1],
+			"policy":            splitName[1],
 			"policy_namespace":  splitName[0],
 			"cluster_namespace": req.Namespace,
 		}
 	} else {
 		promLabels = prometheus.Labels{
 			"type":              "root",
-			"name":              req.Name,
+			"policy":            req.Name,
 			"policy_namespace":  req.Namespace,
 			"cluster_namespace": "<null>", // this is basically a sentinel value
 		}

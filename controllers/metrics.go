@@ -8,14 +8,14 @@ import (
 var (
 	policyStatusGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "ocm_policy_status",
+			Name: "policy_governance_info",
 			Help: "The compliance status of the named policy. 0 == Compliant. 1 == NonCompliant",
 		},
 		[]string{
-			"type",
-			"name",
-			"policy_namespace",
-			"cluster_namespace",
+			"type",              // "root" or "propagated"
+			"policy",            // The name of the root policy
+			"policy_namespace",  // The namespace where the root policy is defined
+			"cluster_namespace", // The namespace where the policy was propagated
 		},
 	)
 )
